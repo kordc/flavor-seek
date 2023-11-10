@@ -1,0 +1,3 @@
+[submodule "EaT-PIM"]
+	path = EaT-PIM
+	url = https://github.com/SebChw/EaT-PIM.git
