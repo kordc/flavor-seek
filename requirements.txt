@@ -1,0 +1,7 @@
+langchain
+sentence_transformers
+chardet
+charset_normalizer
+qdrant-client
+pandas
+faiss-cpu
