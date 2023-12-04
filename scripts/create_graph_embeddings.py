@@ -11,10 +11,15 @@ from eatpim.rank_subs_in_recipe import content_to_ids, load_embedding_data
 
 # Allows whole dish embedding calculation
 parser = argparse.ArgumentParser()
-parser.add_argument("--data_dir", type=str, required=True)
-parser.add_argument("--model_dir", type=str, required=True)
+parser.add_argument("--data_dir", type=str, default="EaT-PIM/data/recipe_parsed_sm")
+parser.add_argument(
+    "--model_dir",
+    type=str,
+    default="models/GraphOps_recipe_parsed_sm_graph_TransE",
+    help="Path to model directory, relative w.r.t data_dir",
+)
 args = parser.parse_args()
-main_dir = "data" / Path(args.data_dir)
+main_dir = Path(args.data_dir)
 embedding_calculator = calc = load_embedding_data(main_dir, args.model_dir)
 with open((main_dir / "ingredient_list.json").resolve(), "r") as f:
     ingredient_list = json.load(f)
