@@ -1,7 +1,17 @@
 # flavor-seek
 
+## Baselines
+To run search for a recipe using a baseline model please do
 
-To start working please do
+```sh
+    $ python3 scripts/similarity_search.py --algorithm tfidf, bm25, rag
+```
+This will run the search for all the models for queries in data/evaluation.txt and save results to results/baselines.json.
+
+Warning! FAISS library works on GPU only on Linux, this file is supposed to work only on Linux.
+
+## Graph embeddings
+To start working with graph embeddings please do
 
 ```sh
     git clone https://github.com/kordc/flavor-seek.git

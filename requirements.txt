@@ -4,4 +4,10 @@ chardet
 charset_normalizer
 qdrant-client
 pandas
-faiss-cpu
+faiss-gpu
+bm25
+scikit-learn
+nltk
+numpy
+torch>=2.0+cu118
+
