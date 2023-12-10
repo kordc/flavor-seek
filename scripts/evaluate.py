@@ -6,8 +6,10 @@ import faiss
 def calculate_metrics(query_embeddings, doc_embeddings, true_indices, k):
     dimension = query_embeddings.shape[1]
     print("Creating index...")
+    # The search is performed using a dot product. This is equivalent to cosine similarity if the vectors are normalized.
     index = faiss.IndexFlatIP(dimension)
     print("Adding embeddings to index...")
+    # Normalization of embeddings is required for cosine similarity
     faiss.normalize_L2(doc_embeddings)
     index.add(doc_embeddings)
 
@@ -16,6 +18,7 @@ def calculate_metrics(query_embeddings, doc_embeddings, true_indices, k):
 
     # Search the index
     print("Searching index...")
+    # Normalization of embeddings is required for cosine similarity
     faiss.normalize_L2(query_embeddings)
     _, indices = index.search(query_embeddings, k)
     print("Done searching index!")
@@ -52,7 +55,7 @@ if __name__ == "__main__":
     # Enter your paths, and search size here
     path_to_queries_embeddings = "../data/query_embeddings.parquet"
     path_to_recipes_embeddings = "../data/recipe_embeddings.parquet"
-    size_of_search = 10000
+    size_of_search = 1000
 
     queries = pq.read_table(path_to_queries_embeddings).to_pandas()
     recipes = pq.read_table(path_to_recipes_embeddings).to_pandas()
