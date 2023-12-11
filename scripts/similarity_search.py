@@ -205,10 +205,29 @@ class TextEmbedderSearchEngine:
         return df_result
 
 
+def preprocess_csv(df):
+    df_new = df["llm_output"]
+    df_new = df_new.str.split(". ", 1, expand=True)
+    df_new = df_new[1]
+    df_new = df_new.str.split("\n", expand=True)
+    print(df_new)
+    exit()
+
+    processed_data = [
+        line.split(". ", 1)[1]
+        for line in df["llm_output"].iloc[0].strip().split("\n")
+        if line
+    ]
+
+
 def read_queries(file_path):
-    with open(file_path, "r") as file:
-        queries = file.readlines()
-    return [query.strip() for query in queries]
+    if "txt" in file_path:
+        with open(file_path, "r") as file:
+            queries = file.readlines()
+        return [query.strip() for query in queries]
+    elif "csv" in file_path:
+        df = pd.read_csv(file_path)
+        return df["llm_output"].tolist()
 
 
 def main():
@@ -242,20 +261,20 @@ def main():
         )
         rag_engine.preprocess_and_upload(data.df)
 
-    results = defaultdict(list)
+    results = defaultdict(lambda: defaultdict(list))
 
-    for query in queries:
+    for query in tqdm(queries):
         print(f"Query: {query}")
         if "tfidf" in args.algorithms:
             print("TF-IDF Results:")
             tfidf_results = tfidf_engine.search(query)
             print(tfidf_results)
-            results["tfidf"].append(tfidf_results)
+            results["tfidf"][query].append(tfidf_results["id"].to_list())
         if "bm25" in args.algorithms:
             print("\nBM25 Results:")
             bm25_results = bm25_engine.search(query)
             print(bm25_results)
-            results["bm25"].append(bm25_results)
+            results["bm25"][query].append(bm25_results["id"].to_list())
         if "rag" in args.algorithms:
             print("\nText Embedder Results:")
             rag_results = rag_engine.search(query)
@@ -263,11 +282,12 @@ def main():
                 data.df["id"].isin(rag_results["id"].tolist())
             ]
             print(rag_results_original)
-            results["rag"].append(rag_results_original)
+            results["rag"][query].append(rag_results_original["id"])
         print("\n" + "-" * 50 + "\n")
 
-    with open("results/baselines.json", "w") as f:
-        json.dump(results, f)
+    for algorithm in args.algorithms:
+        with open(f"results/{algorithm}_results_evaluation.json", "w") as file:
+            json.dump(results[algorithm], file)
 
 
 if __name__ == "__main__":
