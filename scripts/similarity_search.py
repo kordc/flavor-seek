@@ -76,37 +76,62 @@ class RecipeData:
 
 
 class TfIdfSearchEngine:
-    def __init__(self, recipe_data, max_features=1000):
+    def __init__(self, recipe_data, max_features=1000, save_vectors=False):
         self.recipe_data = recipe_data
         self.max_features = max_features
+        self.save_vectors = save_vectors
+        self.vectorizer = None
+        self.index = None
 
-    def prepare(self):
+    def load_or_create_vectorizer(self):
         try:
             self.vectorizer = load("data/vectorizer.joblib")
-            print("Loaded vectorizer")
         except FileNotFoundError:
-            print("Creating vectorizer")
             self.vectorizer = TfidfVectorizer(
                 stop_words="english", max_features=self.max_features
             )
             self.vectorizer.fit(self.recipe_data.df["combined"])
             dump(self.vectorizer, "data/vectorizer.joblib")
+
+    def load_or_create_tfidf_matrix(self):
         try:
-            tfidf_matrix = load("data/tfidf_matrix.joblib")
-            print("Loaded tfidf_matrix")
+            return load("data/tfidf_matrix.joblib")
         except FileNotFoundError:
-            print("Creating tfidf_matrix")
             tfidf_matrix = self.vectorizer.transform(self.recipe_data.df["combined"])
             dump(tfidf_matrix, "data/tfidf_matrix.joblib")
+            return tfidf_matrix
 
+    def save_vectors_to_csv(self, matrix, filename):
+        if self.save_vectors:
+            pd.DataFrame(matrix).to_csv(filename, index=False)
+
+    def save_vectors_to_parquet_file(self, matrix, filename):
+        if self.save_vectors:
+            pd.DataFrame(matrix).to_parquet(filename, index=False)
+
+    def prepare_index(self, tfidf_matrix):
         d = tfidf_matrix.shape[1]
         index = faiss.IndexFlatL2(d)
-        self.gpu_index = faiss.index_cpu_to_all_gpus(index)
-        self.gpu_index.add(tfidf_matrix.toarray().astype("float32"))
+        if faiss.get_num_gpus() > 0:
+            self.index = faiss.index_cpu_to_all_gpus(index)
+        else:
+            self.index = index
+        self.index.add(tfidf_matrix.toarray().astype("float32"))
+
+    def prepare(self):
+        self.load_or_create_vectorizer()
+        tfidf_matrix = self.load_or_create_tfidf_matrix()
+        self.save_vectors_to_parquet_file(
+            tfidf_matrix.toarray(), "data/tfidf_recipes_matrix.parquet"
+        )
+        self.prepare_index(tfidf_matrix)
 
     def search(self, query, top_n=10):
         query_vector = self.vectorizer.transform([query]).toarray().astype("float32")
-        distances, indices = self.gpu_index.search(query_vector, top_n)
+        self.save_vectors_to_parquet_file(
+            query_vector, "data/tfidf_eval_queries_matrix.parquet"
+        )
+        _, indices = self.index.search(query_vector, top_n)
         return self.recipe_data.df.iloc[indices[0]]
 
 
@@ -229,9 +254,10 @@ def main():
         "data/raw_recipes_used.csv", "data/raw_recipes_used_preprocessed.csv"
     )
     data.load_data()
+    cleaned_queries = [RecipeData.clean_text(query) for query in queries]
 
     if "tfidf" in args.algorithms:
-        tfidf_engine = TfIdfSearchEngine(data)
+        tfidf_engine = TfIdfSearchEngine(data, save_vectors=True)
         tfidf_engine.prepare()
     if "bm25" in args.algorithms:
         bm25_engine = BM25SearchEngine(data)
@@ -244,18 +270,18 @@ def main():
 
     results = defaultdict(list)
 
-    for query in queries:
+    for query in cleaned_queries:
         print(f"Query: {query}")
         if "tfidf" in args.algorithms:
             print("TF-IDF Results:")
             tfidf_results = tfidf_engine.search(query)
             print(tfidf_results)
-            results["tfidf"].append(tfidf_results)
+            results["tfidf"].append({query: tfidf_results["id"].tolist()})
         if "bm25" in args.algorithms:
             print("\nBM25 Results:")
             bm25_results = bm25_engine.search(query)
             print(bm25_results)
-            results["bm25"].append(bm25_results)
+            results["bm25"].append({query: bm25_results["id"].tolist()})
         if "rag" in args.algorithms:
             print("\nText Embedder Results:")
             rag_results = rag_engine.search(query)
@@ -263,10 +289,15 @@ def main():
                 data.df["id"].isin(rag_results["id"].tolist())
             ]
             print(rag_results_original)
-            results["rag"].append(rag_results_original)
+            results["rag"].append({query: rag_results_original["id"].tolist()})
         print("\n" + "-" * 50 + "\n")
 
-    with open("results/baselines.json", "w") as f:
+    for alg in results:
+        for query_dict in results[alg]:
+            for query, ids in query_dict.items():
+                query_dict[query] = [id for id in ids if id is not None]
+
+    with open("results/baselines_evaluation.json", "w") as f:
         json.dump(results, f)
 
 
