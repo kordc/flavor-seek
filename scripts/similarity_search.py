@@ -77,7 +77,7 @@ class RecipeData:
 
 
 class TfIdfSearchEngine:
-    def __init__(self, recipe_data, max_features=1000, save_vectors=False):
+    def __init__(self, recipe_data, max_features=512, save_vectors=False):
         self.recipe_data = recipe_data
         self.max_features = max_features
         self.save_vectors = save_vectors
@@ -121,19 +121,17 @@ class TfIdfSearchEngine:
 
     def prepare(self):
         self.load_or_create_vectorizer()
-        tfidf_matrix = self.load_or_create_tfidf_matrix()
+        self.tfidf_matrix = self.load_or_create_tfidf_matrix()
         self.save_vectors_to_parquet_file(
-            tfidf_matrix.toarray(), "data/tfidf_recipes_matrix.parquet"
+            self.tfidf_matrix.toarray(), "data/tfidf_recipes_matrix.parquet"
         )
-        self.prepare_index(tfidf_matrix)
+        self.prepare_index(self.tfidf_matrix)
 
     def search(self, query, top_n=10):
         query_vector = self.vectorizer.transform([query]).toarray().astype("float32")
-        self.save_vectors_to_parquet_file(
-            query_vector, "data/tfidf_eval_queries_matrix.parquet"
-        )
         _, indices = self.index.search(query_vector, top_n)
-        return self.recipe_data.df.iloc[indices[0]]
+        top_vectors = self.tfidf_matrix[indices[0]]
+        return self.recipe_data.df.iloc[indices[0]], top_vectors
 
 
 class BM25SearchEngine:
@@ -288,6 +286,7 @@ def main():
         embedder_engine.preprocess_and_upload(data.df)
 
     results = defaultdict(list)
+    tfidf_vectors = defaultdict(list)
 
     for query in tqdm(queries):
         if print_value:
@@ -295,10 +294,11 @@ def main():
         if "tfidf" in args.algorithms:
             if print_value:
                 print("TF-IDF Results:")
-            tfidf_results = tfidf_engine.search(RecipeData.clean_text(query))
+            tfidf_results, vectors = tfidf_engine.search(RecipeData.clean_text(query))
             if print_value:
                 print(tfidf_results)
             results["tfidf"].append({query: tfidf_results["id"].tolist()})
+            tfidf_vectors[query].append(vectors)
         if "bm25" in args.algorithms:
             if print_value:
                 print("\nBM25 Results:")
