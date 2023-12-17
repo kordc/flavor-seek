@@ -1,6 +1,7 @@
 import argparse
 import gc
 import json
+import os
 import string
 from collections import defaultdict
 
@@ -231,9 +232,20 @@ class TextEmbedderSearchEngine:
 
 
 def read_queries(file_path):
-    with open(file_path, "r") as file:
-        queries = file.readlines()
-    return [query.strip() for query in queries]
+    _, file_extension = os.path.splitext(file_path)
+
+    if file_extension.lower() == ".txt":
+        with open(file_path, "r") as file:
+            data = file.readlines()
+        return [query.strip() for query in data]
+
+    # Read .parquet file
+    elif file_extension.lower() == ".parquet":
+        df = pd.read_parquet(file_path)
+        return df["query"].tolist()
+
+    else:
+        raise ValueError("Unsupported file format")
 
 
 def main():
@@ -242,19 +254,26 @@ def main():
         "--algorithms",
         type=str,
         nargs="+",
-        choices=["tfidf", "bm25", "rag"],
-        default=["tfidf", "bm25", "rag"],
+        choices=["tfidf", "bm25", "embedder"],
+        default=["tfidf", "bm25", "embedder"],
         help="Algorithm type (default: tfidf)",
     )
+    parser.add_argument(
+        "--print",
+        dest="print_value",
+        action="store_true",
+        help="Print results",
+        default=False,
+    )
     args = parser.parse_args()
+    print_value = args.print_value
 
-    queries = read_queries("data/evaluation.txt")
+    queries = read_queries("data/queries.parquet")
 
     data = RecipeData(
         "data/raw_recipes_used.csv", "data/raw_recipes_used_preprocessed.csv"
     )
     data.load_data()
-    cleaned_queries = [RecipeData.clean_text(query) for query in queries]
 
     if "tfidf" in args.algorithms:
         tfidf_engine = TfIdfSearchEngine(data, save_vectors=True)
@@ -262,42 +281,52 @@ def main():
     if "bm25" in args.algorithms:
         bm25_engine = BM25SearchEngine(data)
         bm25_engine.prepare()
-    if "rag" in args.algorithms:
-        rag_engine = TextEmbedderSearchEngine(
+    if "embedder" in args.algorithms:
+        embedder_engine = TextEmbedderSearchEngine(
             "jinaai/jina-embeddings-v2-small-en", "/tmp/recipe_store_cli", "recipies"
         )
-        rag_engine.preprocess_and_upload(data.df)
+        embedder_engine.preprocess_and_upload(data.df)
 
     results = defaultdict(list)
 
-    for query in cleaned_queries:
-        print(f"Query: {query}")
+    for query in tqdm(queries):
+        if print_value:
+            print(f"Query: {query}")
         if "tfidf" in args.algorithms:
-            print("TF-IDF Results:")
-            tfidf_results = tfidf_engine.search(query)
-            print(tfidf_results)
+            if print_value:
+                print("TF-IDF Results:")
+            tfidf_results = tfidf_engine.search(RecipeData.clean_text(query))
+            if print_value:
+                print(tfidf_results)
             results["tfidf"].append({query: tfidf_results["id"].tolist()})
         if "bm25" in args.algorithms:
-            print("\nBM25 Results:")
-            bm25_results = bm25_engine.search(query)
-            print(bm25_results)
+            if print_value:
+                print("\nBM25 Results:")
+            bm25_results = bm25_engine.search(RecipeData.clean_text(query))
+            if print_value:
+                print(bm25_results)
             results["bm25"].append({query: bm25_results["id"].tolist()})
-        if "rag" in args.algorithms:
-            print("\nText Embedder Results:")
-            rag_results = rag_engine.search(query)
-            rag_results_original = data.df[
-                data.df["id"].isin(rag_results["id"].tolist())
+        if "embedder" in args.algorithms:
+            if print_value:
+                print("\nText Embedder Results:")
+            embedder_results = embedder_engine.search(query)
+            embedder_results_original = data.df[
+                data.df["id"].isin(embedder_results["id"].tolist())
             ]
-            print(rag_results_original)
-            results["rag"].append({query: rag_results_original["id"].tolist()})
-        print("\n" + "-" * 50 + "\n")
+            if print_value:
+                print(embedder_results_original)
+            results["embedder"].append(
+                {query: embedder_results_original["id"].tolist()}
+            )
+        if print_value:
+            print("\n" + "-" * 50 + "\n")
 
     for alg in results:
         for query_dict in results[alg]:
             for query, ids in query_dict.items():
                 query_dict[query] = [id for id in ids if id is not None]
 
-    with open("results/baselines_evaluation.json", "w") as f:
+    with open("results/tfidf_full_data.json", "w") as f:
         json.dump(results, f)
 
 
