@@ -103,7 +103,8 @@ class RecipeSearchEngine:
         query = self.clean_text(query)
         query_embedding = self.get_query_embedding(query)
         query_embedding = torch.from_numpy(query_embedding)
-        for model in self.models:
+        results_dict = {}
+        for j, model in enumerate(self.models):
             model, index = self.models[model]
             model.eval()
             with torch.no_grad():
@@ -114,10 +115,18 @@ class RecipeSearchEngine:
             faiss.normalize_L2(embedding) # to chyba nic nie robi gdy jest tylko jeden embedding
             _, indices = index.search(embedding, topk)
             print(f"Ranking for {model.train_type.name}:")
+            results = [{} for i in range(topk)]
             for i in range(topk):
                 index = indices[0][i]
-                print(f"{i+1}. {self.df.iloc[index]['name']}")
+                results[i]["name"] = self.df.iloc[index]["name"]
+                results[i]["id"] = self.df.iloc[index]["id"]
+                results[i]["description"] = self.df.iloc[index]["description"]
+                results[i]["ingredients"] = self.df.iloc[index]["ingredients"]
+                results[i]["steps"] = self.df.iloc[index]["steps"]
+                print(f"{j+1}.{i+1} {self.df.iloc[index]['name']}")
             print("")
+            results_dict[j] = results
+        return results_dict
             
 
 def main():
@@ -130,21 +139,34 @@ def main():
         default=["text", "graph", "text+graph"],
         help="Algorithm type (default: text)",
     )
-    # parser.add_argument(
-    #     "--query",
-    #     type=str,
-    #     default="",
-    #     help="Query to search for (default: '')",
-    # )
+
     args = parser.parse_args()
     print(f"Algorithms choosen: {args.algorithm}")
     engine = RecipeSearchEngine(args.algorithm)
+
     while True:
-        args.query = input("Enter query: ")
-        if args.query == "exit":
+        args.query = input("Enter query or type exit to exit: ")
+        if args.query == "exit" or args.query == "":
             break
         print(f"Query: {args.query}")
-        engine.search(args.query)
+        results = engine.search(args.query)
+        while True:
+            detail_info = input("Enter ranking number to see more details or press enter to skip: ")
+            if detail_info == "exit" or detail_info == "":
+                break
+            j, i = detail_info.split(".")
+            i, j = int(i)-1, int(j)-1
+            print(f"Name: {results[j][i]['name']}")
+            print()
+            print(f"Description: {results[j][i]['description']}")
+            print()
+            print(f"Ingredients: {results[j][i]['ingredients']}")
+            print()
+            print(f"Steps: {results[j][i]['steps']}")
+            print()
+            print("------------------------------------------------------------------------")
+
+
     
 
 
