@@ -1,13 +1,6 @@
-from typing import Any, Dict, Union
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from dataset import TrainType
-from lightning import LightningModule
-from losses import ApproximateMRR
-from torch.utils.data import DataLoader
-
 from art.core import ArtModule
 from art.utils.enums import (
     BATCH,
@@ -15,9 +8,9 @@ from art.utils.enums import (
     LOSS,
     PREDICTION,
     TARGET,
-    TRAIN_LOSS,
-    VALIDATION_LOSS,
 )
+from dataset import TrainType
+from losses import ApproximateMRR
 
 
 class EmbeddingModel(ArtModule):

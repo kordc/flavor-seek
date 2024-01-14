@@ -23,20 +23,24 @@ class HitAtKMetric(Metric):
         self.count += target.size(0)
 
         # Get top-k indices for each query
-        topk_indices = torch.topk(preds, min(self.top_k,target.size(0)), dim=1).indices
+        topk_indices = torch.topk(preds, min(self.top_k, target.size(0)), dim=1).indices
         target_expanded = target.unsqueeze(1).expand_as(topk_indices)
         hits = torch.any(torch.eq(target_expanded, topk_indices), dim=1)
 
         # Update total hits
         self.total += hits.sum()
+
     def compute(self):
         # Compute final result
         return self.total.float() / self.count
 
+
 class MRRMetric(Metric):
     def __init__(self):
         super().__init__(dist_sync_on_step=False)
-        self.add_state("total_reciprocal_rank", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state(
+            "total_reciprocal_rank", default=torch.tensor(0.0), dist_reduce_fx="sum"
+        )
         self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, preds, target):
@@ -67,5 +71,3 @@ class MRRMetric(Metric):
     def compute(self):
         # Compute mean of reciprocal ranks
         return self.total_reciprocal_rank / self.count
-
-
