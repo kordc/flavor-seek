@@ -69,29 +69,6 @@ class RecipeSearchEngine:
         self.df = pd.read_csv("../../data/dataframe.csv")
         self.df = self.df.sort_values(by=['id'])
 
-    def clean_text(self, text):
-        # Convert text to lowercase
-        text = text.lower()
-
-        # Remove punctuation
-        text = text.translate(str.maketrans("", "", string.punctuation))
-
-        # Tokenize the text
-        tokens = text.split()
-
-        # Remove stopwords
-        stop_words = set(stopwords.words("english"))
-        tokens = [word for word in tokens if word not in stop_words]
-
-        # Lemmatize the tokens
-        lemmatizer = WordNetLemmatizer()
-        tokens = [lemmatizer.lemmatize(word) for word in tokens]
-
-        # Join the tokens back into a single string
-        cleaned_text = " ".join(tokens)
-
-        return cleaned_text
-
     def get_query_embedding(self, query):
         with torch.no_grad():
             embedding = self.text_embedder.encode(query)
@@ -100,7 +77,6 @@ class RecipeSearchEngine:
 
 
     def search(self, query, topk=10):
-        query = self.clean_text(query)
         query_embedding = self.get_query_embedding(query)
         query_embedding = torch.from_numpy(query_embedding)
         results_dict = {}
