@@ -63,14 +63,14 @@ def calculate_metrics(query_embeddings, doc_embeddings, true_indices, k):
 
 if __name__ == "__main__":
     # Enter your paths, and search size here
-    path_to_queries_embeddings = "flavor-seek/data/queries_projected_both2.parquet"
-    path_to_recipes_embeddings = "flavor-seek/data/recipes_projected_both2.parquet"
+    path_to_queries_embeddings = "data/tfidf_queries_vectors.parquet"
+    path_to_recipes_embeddings = "data/tfidf_recipes_matrix.parquet"
     size_of_search = 200
 
     queries = pd.read_parquet(path_to_queries_embeddings)
     recipes = pd.read_parquet(path_to_recipes_embeddings)
 
-    with open("flavor-seek/data/recipe_id_splits.json") as f:
+    with open("data/recipe_id_splits.json") as f:
         splits_with_id = json.load(f)
         recipes_id_in_dataset = splits_with_id["valid"]
 

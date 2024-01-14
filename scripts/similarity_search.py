@@ -122,16 +122,25 @@ class TfIdfSearchEngine:
     def prepare(self):
         self.load_or_create_vectorizer()
         self.tfidf_matrix = self.load_or_create_tfidf_matrix()
-        self.save_vectors_to_parquet_file(
-            self.tfidf_matrix.toarray(), "data/tfidf_recipes_matrix.parquet"
-        )
+        df = self.recipe_data.df
+        df["embedding"] = self.tfidf_matrix.toarray().tolist()
+        df.rename(columns={"id": "recipe_id"}, inplace=True)
+        self.save_vectors_to_parquet_file(df, "data/tfidf_recipes_matrix.parquet")
         self.prepare_index(self.tfidf_matrix)
+
+    def get_queries_vectors(self, file_path):
+        df = pd.read_parquet(file_path)
+        vectors = (
+            self.vectorizer.transform(df["query"].tolist()).toarray().astype("float32")
+        )
+        for i in range(vectors.shape[0]):
+            df.at[i, "query_embeddings"] = vectors[i]
+        self.save_vectors_to_parquet_file(df, "data/tfidf_queries_vectors.parquet")
 
     def search(self, query, top_n=10):
         query_vector = self.vectorizer.transform([query]).toarray().astype("float32")
         _, indices = self.index.search(query_vector, top_n)
-        top_vectors = self.tfidf_matrix[indices[0]]
-        return self.recipe_data.df.iloc[indices[0]], top_vectors
+        return self.recipe_data.df.iloc[indices[0]]
 
 
 class BM25SearchEngine:
@@ -263,8 +272,16 @@ def main():
         help="Print results",
         default=False,
     )
+    parser.add_argument(
+        "--search",
+        dest="search",
+        action="store_true",
+        help="Search for queries",
+        default=False,
+    )
     args = parser.parse_args()
     print_value = args.print_value
+    search_value = args.search
 
     queries = read_queries("data/queries.parquet")
 
@@ -276,6 +293,7 @@ def main():
     if "tfidf" in args.algorithms:
         tfidf_engine = TfIdfSearchEngine(data, save_vectors=True)
         tfidf_engine.prepare()
+        tfidf_engine.get_queries_vectors("data/queries.parquet")
     if "bm25" in args.algorithms:
         bm25_engine = BM25SearchEngine(data)
         bm25_engine.prepare()
@@ -286,45 +304,46 @@ def main():
         embedder_engine.preprocess_and_upload(data.df)
 
     results = defaultdict(list)
-    tfidf_vectors = defaultdict(list)
 
-    for query in tqdm(queries):
-        if print_value:
-            print(f"Query: {query}")
-        if "tfidf" in args.algorithms:
+    if search_value:
+        for query in tqdm(queries):
             if print_value:
-                print("TF-IDF Results:")
-            tfidf_results, vectors = tfidf_engine.search(RecipeData.clean_text(query))
+                print(f"Query: {query}")
+            if "tfidf" in args.algorithms:
+                if print_value:
+                    print("TF-IDF Results:")
+                tfidf_results, vectors = tfidf_engine.search(
+                    RecipeData.clean_text(query)
+                )
+                if print_value:
+                    print(tfidf_results)
+                results["tfidf"].append({query: tfidf_results["id"].tolist()})
+            if "bm25" in args.algorithms:
+                if print_value:
+                    print("\nBM25 Results:")
+                bm25_results = bm25_engine.search(RecipeData.clean_text(query))
+                if print_value:
+                    print(bm25_results)
+                results["bm25"].append({query: bm25_results["id"].tolist()})
+            if "embedder" in args.algorithms:
+                if print_value:
+                    print("\nText Embedder Results:")
+                embedder_results = embedder_engine.search(query)
+                embedder_results_original = data.df[
+                    data.df["id"].isin(embedder_results["id"].tolist())
+                ]
+                if print_value:
+                    print(embedder_results_original)
+                results["embedder"].append(
+                    {query: embedder_results_original["id"].tolist()}
+                )
             if print_value:
-                print(tfidf_results)
-            results["tfidf"].append({query: tfidf_results["id"].tolist()})
-            tfidf_vectors[query].append(vectors)
-        if "bm25" in args.algorithms:
-            if print_value:
-                print("\nBM25 Results:")
-            bm25_results = bm25_engine.search(RecipeData.clean_text(query))
-            if print_value:
-                print(bm25_results)
-            results["bm25"].append({query: bm25_results["id"].tolist()})
-        if "embedder" in args.algorithms:
-            if print_value:
-                print("\nText Embedder Results:")
-            embedder_results = embedder_engine.search(query)
-            embedder_results_original = data.df[
-                data.df["id"].isin(embedder_results["id"].tolist())
-            ]
-            if print_value:
-                print(embedder_results_original)
-            results["embedder"].append(
-                {query: embedder_results_original["id"].tolist()}
-            )
-        if print_value:
-            print("\n" + "-" * 50 + "\n")
+                print("\n" + "-" * 50 + "\n")
 
-    for alg in results:
-        for query_dict in results[alg]:
-            for query, ids in query_dict.items():
-                query_dict[query] = [id for id in ids if id is not None]
+        for alg in results:
+            for query_dict in results[alg]:
+                for query, ids in query_dict.items():
+                    query_dict[query] = [id for id in ids if id is not None]
 
     with open("results/tfidf_full_data.json", "w") as f:
         json.dump(results, f)
